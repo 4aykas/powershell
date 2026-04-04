@@ -4,16 +4,6 @@
     Reads the Revit Server Projects folder, mirrors the full folder tree
     to a dated backup folder on the Desktop, and copies all model files.
 
-.DESCRIPTION
-    Revit Server stores each model as a FOLDER ending in ".rvt" (not a real file).
-    The actual model data lives inside that folder as binary chunks + metadata.
-    This script:
-      1. Asks which Revit Server version to back up
-      2. Reads RSN.ini to detect the configured server host
-      3. Scans the Projects folder on the host (UNC path)
-      4. Creates: Desktop\RevitServer_Backup\YYYY-MM-DD\<mirrored tree>
-      5. Robocopy-copies everything preserving the subfolder structure
-
 .NOTES
     - Run on the Revit Server HOST machine (or a machine with UNC access to it)
     - No admin rights required — only read access to the Projects share
@@ -101,10 +91,10 @@ if (Test-Path $rsnIniPath) {
 Write-Title "Step 3: Locating Projects Folder"
 
 $candidatePaths = @(
-    "C:\ProgramData\Autodesk\Revit Server $version\Projects",                     # Local (running on host)
-    "\\$serverHost\Autodesk`$\Revit Server $version\Projects",                    # UNC Autodesk$ share
-    "\\$serverHost\ProgramData\Autodesk\Revit Server $version\Projects",          # UNC ProgramData share
-    "\\$serverHost\C$\ProgramData\Autodesk\Revit Server $version\Projects"        # Admin share fallback
+    "C:\ProgramData\Autodesk\Revit Server $version\Projects",
+    "\\$serverHost\Autodesk`$\Revit Server $version\Projects",
+    "\\$serverHost\ProgramData\Autodesk\Revit Server $version\Projects",
+    "\\$serverHost\C$\ProgramData\Autodesk\Revit Server $version\Projects"
 )
 
 $projectsRoot = $null
@@ -138,17 +128,18 @@ if (-not $projectsRoot) {
 # ─────────────────────────────────────────────────────────────
 Write-Title "Step 4: Scanning Revit Server Model Tree"
 
-# NOTE: In Revit Server, each model is stored as a FOLDER ending in ".rvt"
-# Organisational folders have no extension
 $allItems     = Get-ChildItem -Path $projectsRoot -Recurse -ErrorAction SilentlyContinue
-$modelFolders = $allItems | Where-Object { $_.PSIsContainer -and $_.Name -like "*.rvt" }
-$orgFolders   = $allItems | Where-Object { $_.PSIsContainer -and $_.Name -notlike "*.rvt" }
+$modelFolders = @($allItems | Where-Object { $_.PSIsContainer -and $_.Name -like "*.rvt" })
+$orgFolders   = @($allItems | Where-Object { $_.PSIsContainer -and $_.Name -notlike "*.rvt" })
 
-Write-OK "Organisational folders : $($orgFolders.Count)"
-Write-OK "Model folders (.rvt)   : $($modelFolders.Count)"
+$modelCount = [int]($modelFolders | Measure-Object).Count
+$orgCount   = [int]($orgFolders   | Measure-Object).Count
+
+Write-OK "Organisational folders : $orgCount"
+Write-OK "Model folders (.rvt)   : $modelCount"
 Write-Host ""
 
-if ($modelFolders.Count -eq 0) {
+if ($modelCount -eq 0) {
     Write-Warn "No .rvt model folders found under: $projectsRoot"
     Write-Warn "Folder may be empty or you may lack read permissions."
     $continue = Read-Host "  Continue anyway and back up all files? (Y/N)"
@@ -156,8 +147,8 @@ if ($modelFolders.Count -eq 0) {
 }
 
 Write-Host "  Model tree preview:" -ForegroundColor White
-$modelFolders | ForEach-Object {
-    $rel = $_.FullName.Replace($projectsRoot, "").TrimStart("\")
+foreach ($m in $modelFolders) {
+    $rel = $m.FullName.Replace($projectsRoot, "").TrimStart("\")
     Write-Host "    RSN://$serverHost/$rel" -ForegroundColor DarkCyan
 }
 
@@ -178,31 +169,33 @@ Write-OK "Backup destination created:"
 Write-Host "    $backupDest" -ForegroundColor White
 
 # ─────────────────────────────────────────────────────────────
-# STEP 6 — Write manifest / index file
+# STEP 6 — Write manifest file (FIXED)
 # ─────────────────────────────────────────────────────────────
 $manifestPath  = Join-Path $backupDest "_BACKUP_MANIFEST.txt"
-$manifestLines = @(
-    "Revit Server Backup Manifest",
-    "=" * 60,
-    "Date         : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')",
-    "Revit Version: $version",
-    "Server Host  : $serverHost",
-    "Source       : $projectsRoot",
-    "Destination  : $backupDest",
-    "Models found : $($modelFolders.Count)",
-    "",
-    "Model List (RSN paths):",
-    "-" * 60
-)
+
+$manifestLines = [System.Collections.Generic.List[string]]::new()
+$manifestLines.Add("Revit Server Backup Manifest")
+$manifestLines.Add("=" * 60)
+$manifestLines.Add("Date         : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')")
+$manifestLines.Add("Revit Version: $version")
+$manifestLines.Add("Server Host  : $serverHost")
+$manifestLines.Add("Source       : $projectsRoot")
+$manifestLines.Add("Destination  : $backupDest")
+$manifestLines.Add("Models found : $modelCount")
+$manifestLines.Add("")
+$manifestLines.Add("Model List (RSN paths):")
+$manifestLines.Add("-" * 60)
+
 foreach ($m in $modelFolders) {
     $rel = $m.FullName.Replace($projectsRoot, "").TrimStart("\").Replace("\", "/")
-    $manifestLines += "  RSN://$serverHost/$rel"
+    $manifestLines.Add("  RSN://$serverHost/$rel")
 }
+
 $manifestLines | Out-File -FilePath $manifestPath -Encoding UTF8
 Write-OK "Manifest written: $manifestPath"
 
 # ─────────────────────────────────────────────────────────────
-# STEP 7 — Robocopy full tree preserving structure
+# STEP 7 — Robocopy full tree
 # ─────────────────────────────────────────────────────────────
 Write-Title "Step 6: Copying Files (Robocopy)"
 
@@ -213,23 +206,20 @@ $robocopyLog  = Join-Path $backupDest "_robocopy.log"
 $robocopyArgs = @(
     "`"$projectsRoot`"",
     "`"$backupDest`"",
-    "/E",        # copy all subdirectories including empty
-    "/COPYALL",  # copy data + attributes + timestamps + security
-    "/R:2",      # 2 retries on failure
-    "/W:5",      # wait 5s between retries
-    "/MT:8",     # 8 multi-threaded copy threads
-    "/NP",       # no progress percentage in console
-    "/TEE",      # output to console AND log
+    "/E",
+    "/COPYALL",
+    "/R:2",
+    "/W:5",
+    "/MT:8",
+    "/NP",
+    "/TEE",
     "/LOG:`"$robocopyLog`""
 )
 
-Write-Info "Running: robocopy $($robocopyArgs -join ' ')"
-Write-Host ""
-
+Write-Info "Running robocopy..."
 $proc     = Start-Process -FilePath "robocopy" -ArgumentList $robocopyArgs -NoNewWindow -Wait -PassThru
 $exitCode = $proc.ExitCode
 
-# Robocopy exit codes 0-7 = success (0=no change, 1=copied, 2-7=partial/extra)
 if ($exitCode -le 7) {
     Write-OK "Robocopy completed successfully (exit code: $exitCode)"
 } else {
@@ -243,24 +233,23 @@ if ($exitCode -le 7) {
 Write-Title "Backup Complete"
 
 $copiedItems  = Get-ChildItem -Path $backupDest -Recurse -ErrorAction SilentlyContinue
-$copiedModels = $copiedItems | Where-Object { $_.PSIsContainer -and $_.Name -like "*.rvt" }
+$copiedModels = [int](@($copiedItems | Where-Object { $_.PSIsContainer -and $_.Name -like "*.rvt" }) | Measure-Object).Count
 $totalSizeMB  = [math]::Round(
     ($copiedItems | Where-Object { -not $_.PSIsContainer } | Measure-Object -Property Length -Sum).Sum / 1MB, 2)
 
-Write-Host "  Source            : $projectsRoot"           -ForegroundColor White
-Write-Host "  Destination       : $backupDest"             -ForegroundColor White
-Write-Host "  Models backed up  : $($copiedModels.Count)"  -ForegroundColor Green
-Write-Host "  Total size        : $totalSizeMB MB"         -ForegroundColor Green
-Write-Host "  Manifest          : $manifestPath"           -ForegroundColor Cyan
-Write-Host "  Robocopy log      : $robocopyLog"            -ForegroundColor Cyan
+Write-Host "  Source            : $projectsRoot"    -ForegroundColor White
+Write-Host "  Destination       : $backupDest"      -ForegroundColor White
+Write-Host "  Models backed up  : $copiedModels"    -ForegroundColor Green
+Write-Host "  Total size        : $totalSizeMB MB"  -ForegroundColor Green
+Write-Host "  Manifest          : $manifestPath"    -ForegroundColor Cyan
+Write-Host "  Robocopy log      : $robocopyLog"     -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Backup folder structure on Desktop:" -ForegroundColor White
-Write-Host "  RevitServer_Backup\"                                   -ForegroundColor DarkCyan
-Write-Host "  └── $dateStamp\"                                       -ForegroundColor DarkCyan
-Write-Host "      └── RevitServer_${version}_${serverHost}_${timeStamp}\" -ForegroundColor DarkCyan
-Write-Host "          ├── _BACKUP_MANIFEST.txt"                     -ForegroundColor DarkGray
-Write-Host "          ├── _robocopy.log"                            -ForegroundColor DarkGray
-Write-Host "          └── [mirrored Projects tree with .rvt folders]" -ForegroundColor DarkGray
+Write-Host "  RevitServer_Backup\"                                          -ForegroundColor DarkCyan
+Write-Host "  └── $dateStamp\"                                              -ForegroundColor DarkCyan
+Write-Host "      └── RevitServer_${version}_${serverHost}_${timeStamp}\"  -ForegroundColor DarkCyan
+Write-Host "          ├── _BACKUP_MANIFEST.txt"                            -ForegroundColor DarkGray
+Write-Host "          ├── _robocopy.log"                                   -ForegroundColor DarkGray
+Write-Host "          └── [mirrored Projects tree]"                        -ForegroundColor DarkGray
 Write-Host ""
 
 $openExplorer = Read-Host "  Open backup folder in Explorer? (Y/N)"
