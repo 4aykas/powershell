@@ -19,7 +19,6 @@ $TaskDescription = "Clears Autodesk telemetry, analytics, usage stats, logs and 
 $RunTime         = "03:00"   # 24h format — change if needed
 # ─────────────────────────────────────────────────────────────
 
-# ── Inline cleanup script that the task will execute ─────────
 $CleanupScript = @'
 function Remove-PathSilently {
     param([string]$Path)
@@ -47,7 +46,11 @@ Get-ChildItem "C:\Users" -Directory -ErrorAction SilentlyContinue | ForEach-Obje
     $appdata = "$base\AppData\Roaming"
     $local   = "$base\AppData\Local"
 
-    @(
+    # ── Years loop 2020–2027 ──────────────────────────────────
+    $years = 2020..2027
+
+    $paths = @(
+        # ADLM, Analytics, CER, Licensing
         "$appdata\Autodesk\ADLM",
         "$local\Autodesk\ADLM",
         "$local\Autodesk\Analytics",
@@ -60,27 +63,127 @@ Get-ChildItem "C:\Users" -Directory -ErrorAction SilentlyContinue | ForEach-Obje
         "$local\Autodesk\Genuine Autodesk Service",
         "$local\Autodesk\AdskLicensing\logs",
         "$local\Autodesk\AdskLicensing\cache",
-        "$appdata\Autodesk\Revit\Autodesk Revit 2026\Journals",
-        "$appdata\Autodesk\Revit\Autodesk Revit 2025\Journals",
-        "$appdata\Autodesk\Revit\Autodesk Revit 2024\Journals",
-        "$appdata\Autodesk\Revit\Autodesk Revit 2023\Journals",
-        "$local\Autodesk\AutoCAD 2026\en-US\Cache",
-        "$local\Autodesk\AutoCAD 2025\en-US\Cache",
-        "$local\Autodesk\AutoCAD 2024\en-US\Cache",
-        "$local\Autodesk\AutoCAD 2023\en-US\Cache",
-        "$local\Autodesk\Civil 3D 2026",
-        "$local\Autodesk\Civil 3D 2025",
-        "$appdata\Autodesk\Autodesk Fusion 360\logs",
         "$local\Temp\Autodesk"
-    ) | ForEach-Object { Remove-PathSilently $_ }
+    )
+
+    foreach ($year in $years) {
+        $paths += @(
+            # Revit journals & logs
+            "$appdata\Autodesk\Revit\Autodesk Revit $year\Journals",
+            "$appdata\Autodesk\Revit\Autodesk Revit $year\logs",
+            "$local\Autodesk\Revit\Autodesk Revit $year\CollaborationCache",
+
+            # AutoCAD cache & logs
+            "$local\Autodesk\AutoCAD $year\en-US\Cache",
+            "$local\Autodesk\AutoCAD $year\en-US\logs",
+            "$appdata\Autodesk\AutoCAD $year\en-US\Cache",
+
+            # AutoCAD LT
+            "$local\Autodesk\AutoCAD LT $year\en-US\Cache",
+            "$appdata\Autodesk\AutoCAD LT $year\en-US\Cache",
+
+            # Civil 3D
+            "$local\Autodesk\Civil 3D $year",
+            "$appdata\Autodesk\Civil 3D $year",
+
+            # Revit Server cache
+            "$local\Autodesk\Revit Server $year",
+
+            # Navisworks cache & logs
+            "$appdata\Autodesk\Navisworks Manage $year",
+            "$appdata\Autodesk\Navisworks Simulate $year",
+            "$appdata\Autodesk\Navisworks Freedom $year",
+            "$local\Autodesk\Navisworks Manage $year",
+            "$local\Autodesk\Navisworks Simulate $year",
+
+            # Inventor cache & logs
+            "$appdata\Autodesk\Inventor $year",
+            "$local\Autodesk\Inventor $year",
+
+            # 3ds Max logs & cache
+            "$local\Autodesk\3dsMax $year",
+            "$appdata\Autodesk\3dsMax $year",
+            "$local\Autodesk\3ds Max $year",
+            "$appdata\Autodesk\3ds Max $year",
+
+            # Maya logs & cache
+            "$appdata\Autodesk\Maya\$year",
+            "$local\Autodesk\Maya\$year",
+            "$appdata\Autodesk\Maya$year",
+
+            # InfraWorks
+            "$local\Autodesk\InfraWorks $year",
+            "$appdata\Autodesk\InfraWorks $year",
+
+            # ReCap
+            "$local\Autodesk\ReCap $year",
+            "$appdata\Autodesk\ReCap $year",
+
+            # Vault
+            "$appdata\Autodesk\Vault $year",
+            "$local\Autodesk\Vault $year",
+
+            # Fusion 360 (year-versioned logs)
+            "$appdata\Autodesk\Autodesk Fusion 360\logs\$year",
+
+            # Structural / Advance Steel
+            "$appdata\Autodesk\Advance Steel $year",
+            "$local\Autodesk\Advance Steel $year",
+
+            # Map 3D
+            "$appdata\Autodesk\AutoCAD Map 3D $year",
+            "$local\Autodesk\AutoCAD Map 3D $year",
+
+            # Plant 3D
+            "$appdata\Autodesk\AutoCAD Plant 3D $year",
+            "$local\Autodesk\AutoCAD Plant 3D $year",
+
+            # MEP
+            "$appdata\Autodesk\AutoCAD MEP $year",
+            "$local\Autodesk\AutoCAD MEP $year",
+
+            # Architecture
+            "$appdata\Autodesk\AutoCAD Architecture $year",
+            "$local\Autodesk\AutoCAD Architecture $year",
+
+            # Electrical
+            "$appdata\Autodesk\AutoCAD Electrical $year",
+            "$local\Autodesk\AutoCAD Electrical $year",
+
+            # Mechanical
+            "$appdata\Autodesk\AutoCAD Mechanical $year",
+            "$local\Autodesk\AutoCAD Mechanical $year",
+
+            # BIM Collaborate / BIM 360
+            "$local\Autodesk\BIM 360\$year",
+            "$appdata\Autodesk\BIM 360\$year",
+
+            # Dynamo
+            "$appdata\Dynamo\$year",
+            "$local\Dynamo\$year",
+
+            # Forma
+            "$local\Autodesk\Forma\$year",
+            "$appdata\Autodesk\Forma\$year"
+        )
+    }
+
+    # Fusion 360 main logs (not year-versioned)
+    $paths += @(
+        "$appdata\Autodesk\Autodesk Fusion 360\logs",
+        "$local\Autodesk\Autodesk Fusion 360\logs",
+        "$local\Autodesk\Autodesk Fusion 360\cache"
+    )
+
+    foreach ($p in $paths) { Remove-PathSilently $p }
 }
 
 # ── Wildcard log / temp file cleanup ────────────────────────
 @($Env:TEMP, "C:\Windows\Temp") | ForEach-Object {
     if (Test-Path $_) {
-        Get-ChildItem $_ -Filter "*.adsklog"    -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-        Get-ChildItem $_ -Filter "Adsk*"        -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-        Get-ChildItem $_ -Filter "autodesk*"    -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        Get-ChildItem $_ -Filter "*.adsklog"     -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+        Get-ChildItem $_ -Filter "Adsk*"         -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        Get-ChildItem $_ -Filter "autodesk*"     -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
         Get-ChildItem $_ -Filter "AdskIdentity*" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
@@ -132,9 +235,9 @@ Register-ScheduledTask `
     -Force | Out-Null
 
 Write-Host ""
-Write-Host "Task registered! Runs daily at $RunTime as SYSTEM." -ForegroundColor Green
-Write-Host "Cleanup script : $scriptPath"                        -ForegroundColor Cyan
-Write-Host "Log file       : C:\ProgramData\Autodesk\CleanupLog\cleanup.log" -ForegroundColor Cyan
+Write-Host "Task registered! Runs daily at $RunTime as SYSTEM."               -ForegroundColor Green
+Write-Host "Cleanup script : $scriptPath"                                      -ForegroundColor Cyan
+Write-Host "Log file       : C:\ProgramData\Autodesk\CleanupLog\cleanup.log"  -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Run it NOW     : Start-ScheduledTask -TaskName '$TaskName'" -ForegroundColor Yellow
-Write-Host "Remove task    : Unregister-ScheduledTask -TaskName '$TaskName'" -ForegroundColor DarkYellow
+Write-Host "Run it NOW  : Start-ScheduledTask -TaskName '$TaskName'"           -ForegroundColor Yellow
+Write-Host "Remove task : Unregister-ScheduledTask -TaskName '$TaskName'"      -ForegroundColor DarkYellow
