@@ -6,7 +6,7 @@
     licensing data, usage statistics, and telemetry wipeout.
 
 .DESCRIPTION
-    https://github.com/tv2vn/powershell/blob/main/autodesk-uninstaller.ps1
+    Original base script by: https://github.com/4aykas/powershell
     Enhanced with recommendations from:
     - Autodesk Official Clean Uninstall Guide
     - Hagerman & Pentagon Solutions BIM Admin Best Practices
@@ -53,17 +53,16 @@ function Remove-RegistryKeySilently {
             Remove-Item -Path $KeyPath -Recurse -Force -ErrorAction Stop
             Write-Host "  Deleted registry key: $KeyPath" -ForegroundColor DarkGray
         } catch {
-            Write-Host "  Could not delete: $KeyPath — $($_.Exception.Message)" -ForegroundColor DarkYellow
+            Write-Host "  Could not delete: $KeyPath -- $($_.Exception.Message)" -ForegroundColor DarkYellow
         }
     }
 }
 
 # ─────────────────────────────────────────────────────────────
-# PHASE 1 — Uninstall all Autodesk products (runs 4x to
-#            catch dependent components removed in later passes)
+# PHASE 1 — Uninstall all Autodesk products (4 passes to catch
+#            dependent components removed in later passes)
 # ─────────────────────────────────────────────────────────────
 function Invoke-AutodeskUninstaller {
-    Clear-Host
     Write-Step "Scanning registry for installed Autodesk products..." "Yellow"
 
     $apps = @()
@@ -91,11 +90,10 @@ function Invoke-AutodeskUninstaller {
         ($_.DisplayName -like "*AdskIdentity*")
     }
     $apps = $apps | Select-Object DisplayName, Publisher, PSChildName, UninstallString -Unique
-
-    Write-Host "Found $($apps.Count) installed Autodesk product(s)" -ForegroundColor Yellow
+    Write-Host "  Found $($apps.Count) installed Autodesk product(s)" -ForegroundColor Yellow
 
     foreach ($app in $apps) {
-        # ── Autodesk Access (ODIS-based) ──────────────────────────────
+
         if ($app.DisplayName -match "Autodesk Access") {
             Write-Step "Uninstalling Autodesk Access..." "Yellow"
             Start-Process -FilePath "C:\Program Files\Autodesk\AdODIS\V1\Installer.exe" `
@@ -103,14 +101,12 @@ function Invoke-AutodeskUninstaller {
                 -NoNewWindow -Wait
         }
 
-        # ── Autodesk Identity Manager ─────────────────────────────────
         if ($app.DisplayName -match "Autodesk Identity Manager") {
             Write-Step "Uninstalling Autodesk Identity Manager..." "Yellow"
             Start-Process -FilePath "C:\Program Files\Autodesk\AdskIdentityManager\uninstall.exe" `
                 -ArgumentList "--mode unattended" -NoNewWindow -Wait
         }
 
-        # ── Autodesk Genuine Service ──────────────────────────────────
         if ($app.DisplayName -match "Autodesk Genuine Service") {
             Write-Step "Uninstalling Autodesk Genuine Service..." "Yellow"
             Remove-PathSilently "$Env:ALLUSERSPROFILE\Autodesk\Adlm\ProductInformation.pit"
@@ -118,7 +114,6 @@ function Invoke-AutodeskUninstaller {
             Start-Process msiexec.exe -ArgumentList "/x `"{21DE6405-91DE-4A69-A8FB-483847F702C6}`" /qn" -NoNewWindow -Wait
         }
 
-        # ── Autodesk Desktop Licensing Service ────────────────────────
         if ($app.DisplayName -match "Autodesk Desktop Licensing") {
             Write-Step "Uninstalling Autodesk Desktop Licensing Service..." "Yellow"
             $adskLicPath = "C:\Program Files (x86)\Common Files\Autodesk Shared\AdskLicensing\uninstall.exe"
@@ -129,7 +124,6 @@ function Invoke-AutodeskUninstaller {
             }
         }
 
-        # ── Carbon Insights for Revit ─────────────────────────────────
         if ($app.DisplayName -like "*Carbon Insights for Revit*") {
             Write-Step "Uninstalling Carbon Insights for Revit..." "Yellow"
             Start-Process -FilePath "C:\Program Files\Autodesk\AdODIS\V1\Installer.exe" `
@@ -137,24 +131,21 @@ function Invoke-AutodeskUninstaller {
                 -NoNewWindow -Wait
         }
 
-        # ── ODIS installer-based product ──────────────────────────────
         if ($app.UninstallString -like "*installer.exe*") {
-            Write-Step "Uninstalling $($app.DisplayName) (ODIS)..." "Yellow"
+            Write-Step "Uninstalling $($app.DisplayName) via ODIS..." "Yellow"
             Start-Process -FilePath "C:\Program Files\Autodesk\AdODIS\V1\Installer.exe" `
                 -ArgumentList "-q -i uninstall --trigger_point system -m C:\ProgramData\Autodesk\ODIS\metadata\$($app.PSChildName)\bundleManifest.xml -x C:\ProgramData\Autodesk\ODIS\metadata\$($app.PSChildName)\SetupRes\manifest.xsd" `
                 -NoNewWindow -Wait
             Start-Sleep -Seconds 3
-
-        # ── MSI-based product ─────────────────────────────────────────
         } else {
-            Write-Step "Uninstalling $($app.DisplayName) (MSI)..." "Yellow"
+            Write-Step "Uninstalling $($app.DisplayName) via MSI..." "Yellow"
             Start-Process msiexec.exe -ArgumentList "/x `"$($app.PSChildName)`" /qn" -NoNewWindow -Wait
             Start-Sleep -Seconds 3
         }
     }
 }
 
-Write-Step "=== PHASE 1: Uninstalling Autodesk Products (up to 4 passes) ===" "Magenta"
+Write-Step "=== PHASE 1: Uninstalling Autodesk Products (4 passes) ===" "Magenta"
 for ($pass = 1; $pass -le 4; $pass++) {
     Write-Step "Pass $pass of 4..." "Cyan"
     Invoke-AutodeskUninstaller
@@ -165,20 +156,18 @@ for ($pass = 1; $pass -le 4; $pass++) {
 # ─────────────────────────────────────────────────────────────
 Write-Step "=== PHASE 2: Stopping Autodesk Background Services ===" "Magenta"
 
-$autodeskServices = @(
+@(
     "AdskLicensingService", "AdskLicensingAgent",
     "Autodesk Desktop App Service", "AutodeskDesktopApp",
     "FNPLicensingService", "FlexNet Licensing Service",
     "FlexNet Licensing Service 64"
-)
-
-foreach ($svc in $autodeskServices) {
-    $service = Get-Service -Name $svc -ErrorAction SilentlyContinue
+) | ForEach-Object {
+    $service = Get-Service -Name $_ -ErrorAction SilentlyContinue
     if ($service) {
-        Write-Host "  Stopping service: $svc" -ForegroundColor DarkGray
-        Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
-        Set-Service  -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
-        sc.exe delete $svc | Out-Null
+        Write-Host "  Stopping: $_" -ForegroundColor DarkGray
+        Stop-Service -Name $_ -Force -ErrorAction SilentlyContinue
+        Set-Service  -Name $_ -StartupType Disabled -ErrorAction SilentlyContinue
+        sc.exe delete $_ | Out-Null
     }
 }
 
@@ -187,7 +176,7 @@ foreach ($svc in $autodeskServices) {
 # ─────────────────────────────────────────────────────────────
 Write-Step "=== PHASE 3: Deleting Leftover Files & Folders ===" "Magenta"
 
-$systemFolders = @(
+@(
     "C:\Program Files\Autodesk",
     "C:\Program Files\Common Files\Autodesk Shared",
     "C:\Program Files (x86)\Autodesk",
@@ -195,19 +184,18 @@ $systemFolders = @(
     "C:\ProgramData\Autodesk",
     "C:\ProgramData\FLEXnet",
     "C:\Users\Public\Documents\Autodesk"
-)
+) | ForEach-Object { Remove-PathSilently $_ }
 
-foreach ($folder in $systemFolders) { Remove-PathSilently $folder }
 if ($DeleteCAutodeskFolder) { Remove-PathSilently "C:\Autodesk" }
 
-$userFolders = @(
-    "$Env:APPDATA\Autodesk", "$Env:LOCALAPPDATA\Autodesk",
+@(
+    "$Env:APPDATA\Autodesk",
+    "$Env:LOCALAPPDATA\Autodesk",
     "$Env:LOCALAPPDATA\Autodesk Desktop App",
     "$Env:LOCALAPPDATA\Autodesk\Web Services",
     "$Env:LOCALAPPDATA\Autodesk\Genuine Autodesk Service",
     "$Env:LOCALAPPDATA\Autodesk\AdskLicensing"
-)
-foreach ($folder in $userFolders) { Remove-PathSilently $folder }
+) | ForEach-Object { Remove-PathSilently $_ }
 
 if ($DeleteUserProfiles) {
     Write-Step "Cleaning Autodesk folders from all user profiles..." "Cyan"
@@ -247,7 +235,7 @@ if ($CleanTelemetry) {
     Write-Step "=== PHASE 5: Removing Telemetry, Usage Stats & Logs ===" "Magenta"
 
     @(
-        "$Env:APPDATA\Autodesk\ADLM",       # Usage-based licensing telemetry
+        "$Env:APPDATA\Autodesk\ADLM",
         "$Env:LOCALAPPDATA\Autodesk\Analytics",
         "$Env:LOCALAPPDATA\Autodesk\Web Services",
         "$Env:ALLUSERSPROFILE\Autodesk\ADLM",
@@ -256,14 +244,14 @@ if ($CleanTelemetry) {
         "$Env:APPDATA\Autodesk Desktop App",
         "$Env:TEMP\Autodesk",
         "C:\Windows\Temp\Autodesk",
-        "C:\ProgramData\Autodesk\ODIS",     # ODIS installer metadata
-        "$Env:APPDATA\Autodesk\CER",        # Customer Error Reporting / crash data
+        "C:\ProgramData\Autodesk\ODIS",
+        "$Env:APPDATA\Autodesk\CER",
         "$Env:LOCALAPPDATA\Autodesk\CER"
     ) | ForEach-Object { Remove-PathSilently $_ }
 
     Get-ChildItem -Path $Env:TEMP -Filter "*.adsklog" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
     Get-ChildItem -Path $Env:TEMP -Filter "Adsk*"     -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Host "  Cleaned Autodesk temp/log files" -ForegroundColor DarkGray
+    Write-Host "  Cleaned Autodesk temp/log files from $Env:TEMP" -ForegroundColor DarkGray
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -272,7 +260,6 @@ if ($CleanTelemetry) {
 if ($CleanRegistry) {
     Write-Step "=== PHASE 6: Cleaning Registry ===" "Magenta"
 
-    # Auto-backup before touching registry
     $backupPath = "$Env:USERPROFILE\Desktop\Autodesk_RegistryBackup_$(Get-Date -Format 'yyyyMMdd_HHmmss').reg"
     reg export "HKLM\SOFTWARE\Autodesk" $backupPath /y 2>$null
     Write-Host "  Registry backup saved to: $backupPath" -ForegroundColor Green
@@ -290,7 +277,6 @@ if ($CleanRegistry) {
         "HKLM:\SYSTEM\CurrentControlSet\Services\FlexNet Licensing Service 64"
     ) | ForEach-Object { Remove-RegistryKeySilently $_ }
 
-    # Remove stale Autodesk entries from Programs list
     @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
@@ -316,11 +302,10 @@ Write-Host "  Temp folders cleaned." -ForegroundColor DarkGray
 # ─────────────────────────────────────────────────────────────
 # DONE
 # ─────────────────────────────────────────────────────────────
-Clear-Host
 Write-Host @"
 
 ╔══════════════════════════════════════════════════════════════╗
-║       Autodesk Complete Removal — DONE                       ║
+║       Autodesk Complete Removal -- DONE                      ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  Phase 1 : Products uninstalled (4 passes)                   ║
 ║  Phase 2 : Background services removed                       ║
@@ -330,7 +315,7 @@ Write-Host @"
 ║  Phase 6 : Registry cleaned (backup saved to Desktop)        ║
 ║  Phase 7 : Temp folders cleaned                              ║
 ╠══════════════════════════════════════════════════════════════╣
-║  ► PLEASE RESTART YOUR COMPUTER before reinstalling.         ║
+║  PLEASE RESTART YOUR COMPUTER before reinstalling.           ║
 ╚══════════════════════════════════════════════════════════════╝
 "@ -ForegroundColor Green
 
