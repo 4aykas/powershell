@@ -1,90 +1,34 @@
-# 🧹 Autodesk PowerShell Toolkit
+# Autodesk PowerShell Tools
 
 A collection of PowerShell scripts for managing, cleaning, and backing up Autodesk products on Windows.
 
----
-
-## 📦 Scripts
+## Scripts
 
 | Script | Purpose |
-|---|---|
+|--------|---------|
+| `revit-server-backup.ps1` | Exports all Revit Server models to real `.rvt` files in a dated Desktop folder |
 | `autodesk-uninstaller.ps1` | Fully uninstalls all Autodesk products and wipes all leftovers |
 | `autodesk-telemetry.ps1` | Registers a daily scheduled task to clear Autodesk telemetry & usage data |
-| `revit-server-backup.ps1` | Backs up a Revit Server Projects tree to a dated folder on the Desktop |
 
 ---
 
-## ⚡ Quick Run (from URL)
-
-> Run directly without downloading — **requires PowerShell as Administrator**
-
-```powershell
-# Uninstaller
-Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm https://raw.githubusercontent.com/4aykas/powershell/main/autodesk-uninstaller.ps1 | iex`""
-
-# Telemetry cleanup scheduler
-Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm https://raw.githubusercontent.com/4aykas/powershell/main/autodesk-telemetry.ps1 | iex`""
-
-# Revit Server backup
-irm https://raw.githubusercontent.com/4aykas/powershell/main/revit-server-backup.ps1 | iex
-```
+> Run directly without downloading — right-click PowerShell → **Run as Administrator**, then paste the one-liner.
 
 ---
 
-## 🗑️ autodesk-uninstaller.ps1
+## 🏗️ Revit Server Backup
 
-Uninstalls **all** Autodesk products and removes every trace — files, folders, registry, FLEXnet licenses, telemetry, and temp files.
+### Why this script exists
 
-```powershell
-.\autodesk-uninstaller.ps1
-```
+Revit Server does **not** store models as regular `.rvt` files on disk. Each model is saved as a **folder** ending in `.rvt` containing binary chunks and metadata — not something you can open in Revit directly. A standard file copy gives you an unrestorable mess.
 
-**What it removes:**
-- All installed Autodesk products (MSI + ODIS, up to 4 passes)
-- Background services (AdskLicensing, FLEXnet, Desktop App)
-- `C:\Program Files\Autodesk`, `C:\ProgramData\Autodesk`, `C:\Autodesk`
-- `%AppData%\Autodesk`, `%LocalAppData%\Autodesk` (all user profiles)
-- `C:\ProgramData\FLEXnet` — license trusted storage
-- Registry: `HKLM\SOFTWARE\Autodesk`, `HKCU\SOFTWARE\Autodesk`, FLEXlm keys
-- All temp files, logs, and stale uninstall entries
+This script uses `revitservertool.exe createLocalRVT` — the **official Autodesk CLI tool** shipped with every Revit / Revit Server installation — to assemble a proper, openable `.rvt` file per model, mirroring the full server folder tree.
 
-> ⚠️ Auto-exports a registry backup to Desktop before deleting. **Restart required after.**
+### What it does (10 steps)
 
----
-
-## 📅 autodesk-telemetry.ps1
-
-Registers a **daily Windows Scheduled Task** (runs at 03:00 as SYSTEM) that silently wipes Autodesk telemetry, usage stats, analytics, and logs.
-
-```powershell
-# Register the task (run ONCE as Administrator)
-.\autodesk-telemetry.ps1
-
-# Run immediately after registering
-Start-ScheduledTask -TaskName "Autodesk Daily Telemetry Cleanup"
-
-# Remove the task
-Unregister-ScheduledTask -TaskName "Autodesk Daily Telemetry Cleanup"
-```
-
-**Cleans daily (versions 2020–2027):**
-- ADLM usage & license telemetry
-- CER crash reports & analytics
-- Revit Journal files, AutoCAD & Civil 3D cache
-- FLEXnet license event logs, ODIS metadata
-- `*.adsklog` temp files
-
-**Log file:** `C:\ProgramData\Autodesk\CleanupLog\cleanup.log`
-
----
-
-## 💾 revit-server-backup.ps1
-
-Interactive backup — mirrors a full Revit Server Projects tree to a dated folder on the Desktop using Robocopy.
-
-```powershell
-# Run on the Revit Server host (or any machine with UNC access)
-.\revit-server-backup.ps1
-```
-
-**Backup output structure:**
+1. Auto-detects all installed Revit versions (2020–2027) and their `revitservertool.exe` paths
+2. Shows a version selection menu (auto-selects if only one found)
+3. Validates the tool path and the Projects folder
+4. Reads `RSN.ini` to get the server hostname
+5. Scans the Projects folder and builds the full model list
+6. Creates the backup destination on the Desktop:
