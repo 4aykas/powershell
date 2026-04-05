@@ -1,34 +1,88 @@
-# Autodesk PowerShell Tools
-
-A collection of PowerShell scripts for managing, cleaning, and backing up Autodesk products on Windows.
-
-## Scripts
-
-| Script | Purpose |
-|--------|---------|
-| `revit-server-backup.ps1` | Exports all Revit Server models to real `.rvt` files in a dated Desktop folder |
-| `autodesk-uninstaller.ps1` | Fully uninstalls all Autodesk products and wipes all leftovers |
-| `autodesk-telemetry.ps1` | Registers a daily scheduled task to clear Autodesk telemetry & usage data |
 
 ---
 
-> Run directly without downloading — right-click PowerShell → **Run as Administrator**, then paste the one-liner.
+### Requirements & notes
+
+- ✅ Run **on the Revit Server host machine** (tool and Projects folder already present)
+- ✅ Supported versions: **Revit Server 2020 – 2027**
+- ✅ Tool version must **match** the hosted server version
+- ✅ No full Revit installation needed — `RevitServerToolCommand\` folder is self-contained
+- ⚠️ Best practice: run **after hours** when no users are inside models
+- ⚠️ Locked/busy models are **skipped**, not failed — check the manifest after each run
 
 ---
 
-## 🏗️ Revit Server Backup
+### Quick Run
 
-### Why this script exists
+```powershell
+Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm https://raw.githubusercontent.com/4aykas/powershell/main/revit-server-backup.ps1 | iex`""
+```
 
-Revit Server does **not** store models as regular `.rvt` files on disk. Each model is saved as a **folder** ending in `.rvt` containing binary chunks and metadata — not something you can open in Revit directly. A standard file copy gives you an unrestorable mess.
+---
 
-This script uses `revitservertool.exe createLocalRVT` — the **official Autodesk CLI tool** shipped with every Revit / Revit Server installation — to assemble a proper, openable `.rvt` file per model, mirroring the full server folder tree.
+## 🧹 Autodesk Uninstaller
 
-### What it does (10 steps)
+Fully removes **all Autodesk products** from a Windows machine — MSI packages, registry keys, leftover program folders, ProgramData, and scheduled tasks.
 
-1. Auto-detects all installed Revit versions (2020–2027) and their `revitservertool.exe` paths
-2. Shows a version selection menu (auto-selects if only one found)
-3. Validates the tool path and the Projects folder
-4. Reads `RSN.ini` to get the server hostname
-5. Scans the Projects folder and builds the full model list
-6. Creates the backup destination on the Desktop:
+### What it removes
+
+- All Autodesk MSI/EXE-installed products (detected via registry)
+- `C:\Program Files\Autodesk\`
+- `C:\ProgramData\Autodesk\`
+- `%APPDATA%\Autodesk\` and `%LOCALAPPDATA%\Autodesk\`
+- Autodesk-related registry keys under `HKLM` and `HKCU`
+- Autodesk scheduled tasks
+
+### Requirements
+
+- Windows 10 / 11
+- PowerShell 5.1+
+- **Administrator rights required**
+
+### Quick Run
+
+```powershell
+Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm https://raw.githubusercontent.com/4aykas/powershell/main/autodesk-uninstaller.ps1 | iex`""
+```
+
+---
+
+## 📊 Autodesk Telemetry Cleaner
+
+Registers a **daily Windows Scheduled Task** that clears Autodesk telemetry, usage analytics, and diagnostic data files automatically.
+
+### What it clears
+
+- Autodesk Analytics / telemetry JSON and log files
+- AdSSO and identity service caches
+- CER (Customer Error Reporting) data
+- Usage data under `%APPDATA%` and `%LOCALAPPDATA%`
+
+### Requirements
+
+- Windows 10 / 11
+- PowerShell 5.1+
+- **Administrator rights required** (to register the scheduled task)
+
+### Quick Run
+
+```powershell
+Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm https://raw.githubusercontent.com/4aykas/powershell/main/autodesk-telemetry.ps1 | iex`""
+```
+
+---
+
+## System Requirements
+
+| Requirement | Details |
+|-------------|---------|
+| OS | Windows 10 / 11 |
+| PowerShell | 5.1 or newer |
+| Admin rights | Required for uninstaller, telemetry scheduler, and backup |
+| Network access | Read access to Revit Server Projects share (backup only) |
+
+---
+
+## License
+
+MIT — free to use, modify, and distribute.
