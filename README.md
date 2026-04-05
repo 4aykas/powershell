@@ -55,19 +55,6 @@ revitservertool.exe createLocalRVT "FolderName/ModelName.rvt"
 
 ---
 
-### Backup folder structure
-Desktop
-└── RevitServer_RVT_Backup
-└── 2026-04-05
-└── 2025_SERVERNAME_23-00
-├── _BACKUP_MANIFEST.txt
-├── Viktoriia Ilytska
-│ └── Viktoriia Ilytska.rvt ✅
-├── Maryna Hlohotska
-│ └── Maryna Hlohotska.rvt ✅
-└── VP Modify
-└── VP Modify.rvt ✅
-
 ### Requirements & notes
 
 - ✅ Run **on the Revit Server host machine** (tool and Projects folder already present)
