@@ -1,5 +1,72 @@
+# Autodesk PowerShell Tools
+
+A collection of PowerShell scripts for managing, cleaning, and backing up Autodesk products on Windows.
+
+## Scripts Overview
+
+| Script | Purpose |
+|--------|---------|
+| `revit-server-backup.ps1` | Exports all Revit Server models to real `.rvt` files in a dated Desktop folder |
+| `autodesk-uninstaller.ps1` | Fully uninstalls all Autodesk products and wipes all leftovers |
+| `autodesk-telemetry.ps1` | Registers a daily scheduled task to clear Autodesk telemetry & usage data |
 
 ---
+
+## 🏗️ Revit Server Backup
+
+### Why this script exists
+
+Revit Server does **not** store models as regular `.rvt` files on disk.  
+Each model is saved as a **folder** ending in `.rvt` containing binary chunks and metadata — not something you can open in Revit directly. A standard file copy gives you an unrestorable archive.
+
+This script uses **`revitservertool.exe createLocalRVT`** — the official Autodesk CLI tool shipped with every Revit / Revit Server installation — to assemble a proper, openable `.rvt` file per model, mirroring the full server folder tree.
+
+---
+
+### How it works
+revitservertool.exe createLocalRVT "FolderName/ModelName.rvt"
+-s SERVERHOSTNAME
+-d "C:...\FolderName\ModelName.rvt"
+-o
+---
+
+| Argument | Meaning |
+|----------|---------|
+| `createLocalRVT` | Command to assemble a real `.rvt` from server chunks |
+| `"FolderName/Model.rvt"` | RSN model path (relative to Projects root) |
+| `-s SERVERHOSTNAME` | Revit Server hostname (read from `RSN.ini`) |
+| `-d "C:\...\Model.rvt"` | Full destination file path (mirrors server tree) |
+| `-o` | Overwrite if file already exists |
+
+---
+
+### Script steps
+
+1. **Auto-detect** — Scans all 4 known install path patterns for every version 2020–2027, shows `[TOOL OK]` / `[PROJECTS OK]` tags
+2. **Version select** — Auto-selects if only one version found; shows a numbered menu if multiple
+3. **Validate** — Confirms `revitservertool.exe` exists and shows its file version
+4. **Read hostname** — Parses `RSN.ini` to get the server hostname automatically
+5. **Scan models** — Walks the Projects folder and builds the full model list with relative paths
+6. **Create backup folder** — Creates the destination on the Desktop:
+7. **Export loop** — Calls `createLocalRVT` per model with `[1/N]` progress counter
+8. **Skip locked** — Exit code `5` (locked) and `1` (busy) are caught silently; script continues
+9. **Verify** — Checks each exported `.rvt` exists and logs its size
+10. **Manifest** — Writes `_BACKUP_MANIFEST.txt` with `SUCCESS` / `FAILED` / `SKIPPED` per model
+
+---
+
+### Backup folder structure
+Desktop
+└── RevitServer_RVT_Backup
+└── 2026-04-05
+└── 2025_SERVERNAME_23-00
+├── _BACKUP_MANIFEST.txt
+├── Viktoriia Ilytska
+│ └── Viktoriia Ilytska.rvt ✅
+├── Maryna Hlohotska
+│ └── Maryna Hlohotska.rvt ✅
+└── VP Modify
+└── VP Modify.rvt ✅
 
 ### Requirements & notes
 
