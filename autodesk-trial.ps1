@@ -85,11 +85,6 @@ Write-Title "Step 3: Locating RevitServerTool on This Machine"
 
 $supportedVersions = 2020..2027
 
-# ALL known path patterns — Revit client + Revit Server host installs
-# Revit client (standard install): C:\Program Files\Autodesk\Revit 2025\RevitServerToolCommand\
-# Revit client (alt name):         C:\Program Files\Autodesk\Autodesk Revit 2025\RevitServerToolCommand\
-# Revit Server host (tools sub):   C:\Program Files\Autodesk\Revit 2025\tools\RevitServerToolCommand\
-# Revit Server (standalone):       C:\Program Files\Autodesk\Revit Server 2025\Tools\RevitServerToolCommand\
 $toolPathPatterns = @(
     "C:\Program Files\Autodesk\Revit {VER}\RevitServerToolCommand\revitservertool.exe",
     "C:\Program Files\Autodesk\Autodesk Revit {VER}\RevitServerToolCommand\revitservertool.exe",
@@ -97,6 +92,16 @@ $toolPathPatterns = @(
     "C:\Program Files\Autodesk\Autodesk Revit {VER}\tools\RevitServerToolCommand\revitservertool.exe",
     "C:\Program Files\Autodesk\Revit Server {VER}\Tools\RevitServerToolCommand\revitservertool.exe",
     "C:\Program Files (x86)\Autodesk\Revit Server {VER}\Tools\RevitServerToolCommand\revitservertool.exe"
+)
+
+$projectsPathPatternsLocal = @(
+    "C:\ProgramData\Autodesk\Revit Server {VER}\Projects",
+    "C:\ProgramData\Autodesk\Autodesk Revit Server {VER}\Projects"
+)
+$projectsPathPatternsRemote = @(
+    "\\{HOST}\C$\ProgramData\Autodesk\Revit Server {VER}\Projects",
+    "\\{HOST}\C$\ProgramData\Autodesk\Autodesk Revit Server {VER}\Projects",
+    "\\{HOST}\ProgramData\Autodesk\Revit Server {VER}\Projects"
 )
 
 $detectedTools = [System.Collections.Generic.List[PSCustomObject]]::new()
@@ -115,21 +120,20 @@ foreach ($v in $supportedVersions) {
                 FileVer = $fv
             })
             Write-Host "  ► Revit $v  [TOOL FOUND]  $p" -ForegroundColor Green
-            break  # found for this version, move to next
+            break
         }
     }
 }
 
 if ($detectedTools.Count -eq 0) {
-    Write-Fail "revitservertool.exe not found for any version on this machine."
+    Write-Warn "revitservertool.exe not found automatically for any version."
     Write-Host ""
     Write-Host "  Paths checked (for each version 2020-2027):" -ForegroundColor Yellow
     foreach ($pat in $toolPathPatterns) {
         Write-Host "    $($pat.Replace('{VER}','XXXX'))" -ForegroundColor DarkGray
     }
     Write-Host ""
-    Write-Host "  The tool ships with Revit. Make sure Revit is properly installed." -ForegroundColor Yellow
-    Write-Host "  You can also enter the path manually:" -ForegroundColor Yellow
+    Write-Host "  The tool ships with Revit. Enter the path manually:" -ForegroundColor Yellow
     Write-Host ""
     $manualTool = Read-Host "  Full path to revitservertool.exe (or Enter to abort)"
     if ([string]::IsNullOrWhiteSpace($manualTool) -or -not (Test-Path $manualTool.Trim())) {
@@ -144,7 +148,7 @@ if ($detectedTools.Count -eq 0) {
 }
 
 # ─────────────────────────────────────────────────────────────
-# STEP 4 — Select which version to use for backup
+# STEP 4 — Select which version to use
 # ─────────────────────────────────────────────────────────────
 Write-Title "Step 4: Select Revit Version for Backup"
 
@@ -154,7 +158,7 @@ if ($detectedTools.Count -eq 1) {
     $selectedTool = $detectedTools[0]
     Write-OK "Auto-selected: Revit $($selectedTool.Version)"
 } else {
-    Write-Host "  Multiple versions found. Which one matches your Revit Server?" -ForegroundColor White
+    Write-Host "  Multiple versions found. Pick the one matching your Revit Server:" -ForegroundColor White
     Write-Host "  (Tool version must match the Revit Server version)" -ForegroundColor DarkGray
     Write-Host ""
     for ($i = 0; $i -lt $detectedTools.Count; $i++) {
@@ -178,8 +182,6 @@ Write-OK "Version : $toolFileVer"
 
 # ─────────────────────────────────────────────────────────────
 # STEP 5 — Locate Projects folder
-#           LOCAL  -> local disk
-#           REMOTE -> UNC path on remote server
 # ─────────────────────────────────────────────────────────────
 Write-Title "Step 5: Locating Projects Folder"
 
@@ -211,7 +213,8 @@ if (-not $projRoot) {
     Write-Host ""
     if ($isRemote) {
         Write-Host "  Make sure admin shares are accessible: \\$serverHost\C$" -ForegroundColor Yellow
-        Write-Host "  Or enter a custom UNC path:" -ForegroundColor Yellow
+        Write-Host "  Or enter a custom UNC path, e.g.:" -ForegroundColor DarkGray
+        Write-Host "  \\$serverHost\C$\ProgramData\Autodesk\Revit Server $version\Projects" -ForegroundColor DarkGray
     } else {
         Write-Host "  Expected: C:\ProgramData\Autodesk\Revit Server $version\Projects" -ForegroundColor Yellow
     }
@@ -401,20 +404,6 @@ Write-Host "  Failed        : $failCount" -ForegroundColor $(if ($failCount -gt 
 Write-Host ""
 Write-Host "  Backup   : $backupDest"   -ForegroundColor Cyan
 Write-Host "  Manifest : $manifestPath" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "  Folder structure:" -ForegroundColor DarkGray
-Write-Host "  RevitServer_RVT_Backup\"                        -ForegroundColor DarkCyan
-Write-Host "  └── ${stamp}_${version}_${serverHost}\"         -ForegroundColor DarkCyan
-Write-Host "      ├── _BACKUP_MANIFEST.txt"                   -ForegroundColor DarkGray
-foreach ($m in $models) {
-    $parent = [System.IO.Path]::GetDirectoryName($m.RelPath)
-    if ($parent) {
-        Write-Host "      ├── $parent\"         -ForegroundColor DarkCyan
-        Write-Host "      │   └── $($m.Name)" -ForegroundColor DarkGray
-    } else {
-        Write-Host "      ├── $($m.Name)"      -ForegroundColor DarkGray
-    }
-}
 Write-Host ""
 
 $open = Read-Host "  Open backup folder in Explorer? (Y/N)"
