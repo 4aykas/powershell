@@ -1,127 +1,88 @@
 # Autodesk PowerShell Tools
 
-A collection of PowerShell scripts for managing, cleaning, and backing up Autodesk products on Windows.
+A collection of PowerShell scripts for managing, cleaning, and maintaining Autodesk products on Windows.
 
-## Scripts Overview
+> All scripts require **PowerShell 5.1+** and must be run as **Administrator**.
+
+---
+
+## Scripts
 
 | Script | Purpose |
-|--------|---------|
-| `revit-server-backup.ps1` | Exports all Revit Server models to real `.rvt` files in a dated Desktop folder |
-| `autodesk-uninstaller.ps1` | Fully uninstalls all Autodesk products and wipes all leftovers |
-| `autodesk-telemetry.ps1` | Registers a daily scheduled task to clear Autodesk telemetry & usage data |
+|---|---|
+| [`autodesk-uninstaller.ps1`](./autodesk-uninstaller.ps1) | Fully uninstalls all Autodesk products and wipes every leftover |
+| [`autodesk-telemetry.ps1`](./autodesk-telemetry.ps1) | Registers a daily scheduled task to auto-clear Autodesk telemetry and usage data |
+| [`autodesk-trial.ps1`](./autodesk-trial.ps1) | Resets Autodesk trial license counters and clears related caches |
+
+> **Revit Server Backup** has been moved to its own dedicated repository.
 
 ---
 
-## 🏗️ Revit Server Backup
+## Autodesk Uninstaller
 
-### Why this script exists
+Completely removes **all Autodesk products** from a Windows machine across 7 phases:
 
-Revit Server does **not** store models as regular `.rvt` files on disk.  
-Each model is saved as a **folder** ending in `.rvt` containing binary chunks and metadata — not something you can open in Revit directly. A standard file copy gives you an unrestorable archive.
+| Phase | What it does |
+|---|---|
+| 1 | Uninstalls all detected Autodesk products — MSI and ODIS-based (4 passes) |
+| 2 | Stops and deletes Autodesk background services (FLEXnet, AdskLicensing, Desktop App) |
+| 3 | Deletes leftover folders under `Program Files`, `ProgramData`, and all user profiles |
+| 4 | Wipes FLEXnet and AdskLicensing data, clears `ADSKFLEX_LICENSE_FILE` env var |
+| 5 | Removes telemetry, usage statistics, CER crash data, and ODIS metadata |
+| 6 | Cleans Autodesk registry hives from both `HKLM` and `HKCU` (auto-backup to Desktop first) |
+| 7 | Clears `%TEMP%` and `C:\Windows\Temp` |
 
-This script uses **`revitservertool.exe createLocalRVT`** — the official Autodesk CLI tool shipped with every Revit / Revit Server installation — to assemble a proper, openable `.rvt` file per model, mirroring the full server folder tree.
+### Products covered
 
----
+- AutoCAD, Revit, Civil 3D, Navisworks, Inventor, Vault
+- Maya, 3ds Max, ReCap, InfraWorks, Fusion, BIM 360
+- Autodesk Access, Identity Manager, Genuine Service, Desktop Licensing
 
-### How it works
-revitservertool.exe createLocalRVT "FolderName/ModelName.rvt"
--s SERVERHOSTNAME
--d "C:...\FolderName\ModelName.rvt"
--o
----
-
-| Argument | Meaning |
-|----------|---------|
-| `createLocalRVT` | Command to assemble a real `.rvt` from server chunks |
-| `"FolderName/Model.rvt"` | RSN model path (relative to Projects root) |
-| `-s SERVERHOSTNAME` | Revit Server hostname (read from `RSN.ini`) |
-| `-d "C:\...\Model.rvt"` | Full destination file path (mirrors server tree) |
-| `-o` | Overwrite if file already exists |
-
----
-
-### Script steps
-
-1. **Auto-detect** — Scans all 4 known install path patterns for every version 2020–2027, shows `[TOOL OK]` / `[PROJECTS OK]` tags
-2. **Version select** — Auto-selects if only one version found; shows a numbered menu if multiple
-3. **Validate** — Confirms `revitservertool.exe` exists and shows its file version
-4. **Read hostname** — Parses `RSN.ini` to get the server hostname automatically
-5. **Scan models** — Walks the Projects folder and builds the full model list with relative paths
-6. **Create backup folder** — Creates the destination on the Desktop:
-7. **Export loop** — Calls `createLocalRVT` per model with `[1/N]` progress counter
-8. **Skip locked** — Exit code `5` (locked) and `1` (busy) are caught silently; script continues
-9. **Verify** — Checks each exported `.rvt` exists and logs its size
-10. **Manifest** — Writes `_BACKUP_MANIFEST.txt` with `SUCCESS` / `FAILED` / `SKIPPED` per model
-
----
-
-### Requirements & notes
-
-- ✅ Run **on the Revit Server host machine** (tool and Projects folder already present)
-- ✅ Supported versions: **Revit Server 2020 – 2027**
-- ✅ Tool version must **match** the hosted server version
-- ✅ No full Revit installation needed — `RevitServerToolCommand\` folder is self-contained
-- ⚠️ Best practice: run **after hours** when no users are inside models
-- ⚠️ Locked/busy models are **skipped**, not failed — check the manifest after each run
-
----
-
-### Quick Run
+### Quick run
 
 ```powershell
-Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm https://raw.githubusercontent.com/4aykas/powershell/main/revit-server-backup.ps1 | iex`""
+Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command \`"irm https://raw.githubusercontent.com/4aykas/powershell/main/autodesk-uninstaller.ps1 | iex\`""
 ```
+
+> A registry backup is automatically saved to the Desktop before Phase 6 runs.  
+> Restart the machine after completion before reinstalling any Autodesk product.
 
 ---
 
-## 🧹 Autodesk Uninstaller
+## Autodesk Telemetry Cleaner
 
-Fully removes **all Autodesk products** from a Windows machine — MSI packages, registry keys, leftover program folders, ProgramData, and scheduled tasks.
-
-### What it removes
-
-- All Autodesk MSI/EXE-installed products (detected via registry)
-- `C:\Program Files\Autodesk\`
-- `C:\ProgramData\Autodesk\`
-- `%APPDATA%\Autodesk\` and `%LOCALAPPDATA%\Autodesk\`
-- Autodesk-related registry keys under `HKLM` and `HKCU`
-- Autodesk scheduled tasks
-
-### Requirements
-
-- Windows 10 / 11
-- PowerShell 5.1+
-- **Administrator rights required**
-
-### Quick Run
-
-```powershell
-Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm https://raw.githubusercontent.com/4aykas/powershell/main/autodesk-uninstaller.ps1 | iex`""
-```
-
----
-
-## 📊 Autodesk Telemetry Cleaner
-
-Registers a **daily Windows Scheduled Task** that clears Autodesk telemetry, usage analytics, and diagnostic data files automatically.
+Registers a **daily Windows Scheduled Task** that silently clears Autodesk telemetry, analytics, and diagnostic data in the background.
 
 ### What it clears
 
-- Autodesk Analytics / telemetry JSON and log files
+- Analytics and telemetry JSON/log files (`%LOCALAPPDATA%\Autodesk\Analytics`)
 - AdSSO and identity service caches
-- CER (Customer Error Reporting) data
-- Usage data under `%APPDATA%` and `%LOCALAPPDATA%`
+- CER (Customer Error Reporting) crash data
+- ADLM usage data under `%APPDATA%` and `%LOCALAPPDATA%`
+- Autodesk Desktop App activity logs
 
-### Requirements
-
-- Windows 10 / 11
-- PowerShell 5.1+
-- **Administrator rights required** (to register the scheduled task)
-
-### Quick Run
+### Quick run
 
 ```powershell
-Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm https://raw.githubusercontent.com/4aykas/powershell/main/autodesk-telemetry.ps1 | iex`""
+Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command \`"irm https://raw.githubusercontent.com/4aykas/powershell/main/autodesk-telemetry.ps1 | iex\`""
+```
+
+---
+
+## Autodesk Trial Reset
+
+Resets Autodesk trial license counters and clears related registry entries and cache files, allowing a fresh trial period to begin.
+
+### What it resets
+
+- Trial counter registry entries under `HKCU` and `HKLM`
+- AdLM product information pit files
+- Identity and SSO token caches
+
+### Quick run
+
+```powershell
+Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command \`"irm https://raw.githubusercontent.com/4aykas/powershell/main/autodesk-trial.ps1 | iex\`""
 ```
 
 ---
@@ -129,11 +90,11 @@ Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Com
 ## System Requirements
 
 | Requirement | Details |
-|-------------|---------|
+|---|---|
 | OS | Windows 10 / 11 |
 | PowerShell | 5.1 or newer |
-| Admin rights | Required for uninstaller, telemetry scheduler, and backup |
-| Network access | Read access to Revit Server Projects share (backup only) |
+| Privileges | Administrator required for all scripts |
+| Network | Not required (all scripts run locally) |
 
 ---
 
